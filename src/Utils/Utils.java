@@ -23,7 +23,9 @@ public class Utils {
 		
 		return idx;
 	}
-	
+	//불용어 처리를 위해 있는 메서드에요! 
+	//조사나 어미이면 False 리턴
+	//저희는 도메인이 국어사용관련 질의였어서 불용어처리를 많이 안했는데 자동차 도메인으로 바뀌면 불용어처리를 더 많이 할 수 있을 거 같아요
 	public boolean isSignificant(String target)
 	{
 		String[] elimination = {"/J", "/E"};

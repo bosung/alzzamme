@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.stream.*;
 
 import Utils.Utils;
 
@@ -198,6 +199,7 @@ public class SimCalculator {
         tfVectors_smry = new HashMap<String,Integer[]>();
         tfVectors_tg = new HashMap<String,Integer[]>();
         
+   
         getTf(tfVectorsQ, QnA.docVectorsQ);
         getTf(tfVectorsA, QnA.docVectorsA);
         getTf(tfVectors_biQ, QnA.docVectors_bigramQ);
@@ -217,7 +219,7 @@ public class SimCalculator {
     	 for(int currentIdx = 1; currentIdx < FILEIDXSIZE ; currentIdx++){
     		 String[] doc = docV[currentIdx];
     		 if(doc == null){ continue;}//docVector[i] (i is not the one of the 'real' document names) is null
-    		 
+    		////////이건 왜했을까...////// 
          	HashSet<String> hashVector = new HashSet<String>();
          	for(int j =0;j<doc.length;j++) 
          	{
@@ -226,7 +228,9 @@ public class SimCalculator {
          		else
          			break;
          	}
+         	//////////////////////////
          	
+         	//////현재 document에 등장한 형태소/음절ngram 가지고[ key:형태소 또는 음절ngrm value:해당 형태소 또는 음절ngram이 출현한 문서 번호 array ] 이런 hash를 만들어요
  	        for(String vec : hashVector)
  	        {
  	        	if(vec == null)
@@ -235,7 +239,7 @@ public class SimCalculator {
  	        	Integer[] olddocIdx = tfV.get(vec);
  	        	if(olddocIdx != null )
  	        	{
- 	        		Integer[] newdocIdx = Arrays.copyOf(olddocIdx, olddocIdx.length+1);
+ 	        		Integer[] newdocIdx = Arrays.copyOf(olddocIdx, olddocIdx.length+1);//매번 array copy하네요... 죄송...
  	 	        	newdocIdx[olddocIdx.length] = currentIdx;
  	 	        	
  	        		//tfV.replace(vec, olddocIdx, newdocIdx);
@@ -243,7 +247,7 @@ public class SimCalculator {
  	        	}
  	        	else // current vector is not found in hashVector
  	        	{	
- 	        		if(ut.isSignificant(vec))
+ 	        		if(ut.isSignificant(vec))//issignificant는 불용어 처리를 위해 있는 메서드에요! 조사나 어미에 해당하는 형태소들은 유사도 계산할때 사용하지 않아요.(음절단위로는 사용돼요.)
  	        		{
  	        			Integer[] docIdx = new Integer[1];
  	        			docIdx[0] = currentIdx;
@@ -277,69 +281,83 @@ public class SimCalculator {
 		
 		return validx;
 	}
+	//////////getSimilarity///////////////
+	//쿼리랑 문서들이랑 유사도계산
+	//유사도 계산 알고리즘은 cosine similarity, BM25 두가지 사용(타겟은 exact matching도 썼음)
+	//유사도 계산 대상은 
+	//- Q의 형태소,음절bigram, 음절 trigram
+	//- A의 형태소,음절bigram, 음절 trigram
+	//- 카테고리 일치 여부
+	//유사도 계산해서 상위 10개
+	//////////////////////////////////////
     public void getSimilarity(int queryIdx, int[][] idxArr, double[][] scoreArr ) throws Exception {
-		int fileIdxSize = QnA.FILEIDXSIZE;
-
-		double[] cosSim_Q = new double[fileIdxSize];
-    	double[] cosSim_bi_Q = new double[fileIdxSize];
-    	double[] cosSim_tri_Q = new double[fileIdxSize];
-    	double[] BMscore_Q = new double[fileIdxSize];
-    	double[] BMscore_bi_Q = new double[fileIdxSize];
-    	double[] BMscore_tri_Q = new double[fileIdxSize];
     	
+		int fileIdxSize = QnA.FILEIDXSIZE;
+		
+		//쿼리랑 Q 문서랑 유사도 계산
+		double[] cosSim_Q = new double[fileIdxSize];//형태소 단위로 cosine similarity 계산
+    	double[] cosSim_bi_Q = new double[fileIdxSize];//음절 bigram단위로 cosine similarity 계산
+    	double[] cosSim_tri_Q = new double[fileIdxSize];//음절 tiigram단위로 cosine similarity 계산
+    	double[] BMscore_Q = new double[fileIdxSize];//형태소 단위로 BM25 계산
+    	double[] BMscore_bi_Q = new double[fileIdxSize];//음절 bigram단위로 BM25 계산
+    	double[] BMscore_tri_Q = new double[fileIdxSize];//음절 tiigram단위로 BM25 계산
+    	//쿼리랑 A 문서랑 유사도 계산
     	double[] cosSim_A = new double[fileIdxSize];
     	double[] cosSim_bi_A = new double[fileIdxSize];
     	double[] cosSim_tri_A = new double[fileIdxSize];
     	double[] BMscore_A = new double[fileIdxSize];
     	double[] BMscore_bi_A = new double[fileIdxSize];
     	double[] BMscore_tri_A = new double[fileIdxSize];
-
+    	//타겟
     	double[] target_bi = new double[fileIdxSize];
     	double[] target_uni = new double[fileIdxSize];
-    	
+    	//서머리
     	double[] summery_bi = new double[fileIdxSize];
-    	
+    	//카테고리 일치여부
     	double[] catPoint = new double[fileIdxSize];
-    	
+    	//총점
     	double[] TotalScore = new double[fileIdxSize];
 
-    	
+    	/////타겟////
     	numOfMat = new double[fileIdxSize];
     	for (int i = 0; i < fileIdxSize; i++) {
     		if(QnA.docVectorsTgWord[i].length == 0) continue; //.len 으로 바꿔
     		numOfMat[i] = (double)checkContains(QnA.queryTg, QnA.docVectorsTgWord[i]);
     		
     	}
-    	
+    	/////서머리////
     	tgL_incl_Sm = new double[fileIdxSize];
     	for (int i = 0; i < fileIdxSize; i++) {
     		
     		if(QnA.summary_trimed[i] == null) continue; //.len 으로 바꿔 
     		tgL_incl_Sm[i] = (double)checkContains( QnA.summary_trimed[i],QnA.queryTg_L);
     	}
+    	///타겟이랑 서머리 끝////
+    	
+    	
+    	int[] validDocs = new int[fileIdxSize];//쿼리에 나온 형태소나 음절 ngram을 포함한 문서들의 인덱스 리스트, 이 문서들에 대해서만 점수를 계산해요. 등장도 안하면 어차피 0점 이니깐
 
-    	int[] validDocs = new int[fileIdxSize];
-
-    	int validx = 0;
+    	int validx = 0;//'쿼리에 나온 형태소나 음절 ngram을 포함한 문서들의 인덱스 리스트' 의 크기
     	validx = getValidsDocs(validDocs,validx, QnA.queryVector,tfVectorsQ);
     	validx = getValidsDocs(validDocs,validx, QnA.queryVector,tfVectorsA);
     	validx = getValidsDocs(validDocs,validx, QnA.queryVector_bigram,tfVectors_biQ);
     	validx = getValidsDocs(validDocs,validx, QnA.queryVector_bigram,tfVectors_biA);
     	validx = getValidsDocs(validDocs,validx, QnA.queryVector_trigram,tfVectors_triQ);
     	validx = getValidsDocs(validDocs,validx, QnA.queryVector_trigram,tfVectors_triA);
-    	validx = getValidsDocs(validx, validDocs, QnA.queryVectorTgBi,tfVectors_tgBi);//해빈에 hash에서는 int 가 파일 번호임 요요 이제 나도 파일번호임 요요
+    	validx = getValidsDocs(validx, validDocs, QnA.queryVectorTgBi,tfVectors_tgBi);
 	    validx = getValidsDocs(validDocs,validx, QnA.queryVectorTgUni,tfVectors_tgUni);	
 	    validx = getValidsDocs(validDocs,validx, QnA.queryVector_bigram, tfVectors_smry);
 	    //validx = getValidsDocs(validDocs,validx, QnA.queryTg, tfVectors_tg);
     //	validx = getValidsDocs(validx,validDocs, queryVectorTgSyl,tfVectors_tgsyl);//해빈에 hash에서는 int 가 파일 번호임 요요
     	
-    	/*get similarity*/
+    	//타겟
 	    getSummaryPoint(QnA.query, QnA.queryTg);
-	    
+	    /////
 	   
     	for (int i = 0; i < validDocs.length; i++) {
+    		////i번째 문서에 대해 유사도 계산/////
     		
-    		if(validDocs[i] == 0) break;// 요요
+    		if(validDocs[i] == 0) break;
     		
     	/*	double[] point_doc_Q = new double[QnA.docVectorsQ[validDocs[i]].length + QnA.queryVector.length];
     		double[] point_doc_A = new double[QnA.docVectorsA[validDocs[i]].length + QnA.queryVector.length];
@@ -357,7 +375,12 @@ public class SimCalculator {
             double[] point_doc_smry = null;
             double[] point_query_smry = null;
             */
-
+ 
+    		//point_doc, point_query에 각 형태소 또는 음절ngram 들의 tf-idf 값이 들어가요
+    		//(count가 tf로 쓰이는데 찾아보니까 이래도되긴한대요... 길이로 정규화한 일반적인 tf가 성능이 더 좋을 것 같아요 ㅠㅠ)
+    		//point_doc, point_query 차원이 계속 바뀌어서 cosine similarity가 정상적으로 계산되는게 맞나 의아했는데
+    		//어차피 query랑 문서에 안나온 형태소(또는 음절)의 tfidf 값 0일 테니까 내적할때 상관 없는게 맞네요.. 꼴에 계산량 줄이려고 이렇게 짰던거 같아요
+    		
     		double[] point_doc_Q = new double[QnA.docVectorsQ[validDocs[i]].length + QnA.queryVector.length];
     		double[] point_doc_A = new double[QnA.docVectorsA[validDocs[i]].length + QnA.queryVector.length];
     		double[] point_query_Q = new double[QnA.docVectorsQ[validDocs[i]].length + QnA.queryVector.length];
@@ -376,7 +399,7 @@ public class SimCalculator {
             double[] point_doc_smry = null;
             double[] point_query_smry = null;
             
-             //길이 맞냐 요요
+            
             double[] point_doc_tgBi;
             double[] point_query_tgBi;
             
@@ -384,6 +407,7 @@ public class SimCalculator {
             double[] point_doc_tgUni;
             double[] point_query_tgUni;
             
+            ////////////////////i번째 문서에 대해 BM25 점수 계산, tfidf도 여기서 계산해서 point_doc, point_query에 드가요////////////////////
             BMscore_Q[validDocs[i]] = getPoint(validDocs[i],QnA.mAVGDL_Q,point_doc_Q,point_query_Q
         			,QnA.docVectorsQ,QnA.queryVector,QnA.vectorCountsQ,QnA.queryVecCount,tfVectorsQ);
 	        BMscore_A[validDocs[i]] = getPoint(validDocs[i],QnA.mAVGDL_A,point_doc_A,point_query_A
@@ -400,7 +424,8 @@ public class SimCalculator {
 	        BMscore_tri_A[validDocs[i]] = getPoint(validDocs[i],QnA.tAVGDL_A,point_doc_Tri_A, point_query_Tri_A
 	        		, QnA.docVectors_trigramA, QnA.queryVector_trigram,QnA.vectorCounts_trigramA
 	        		, QnA.queryVecCount_trigram,tfVectors_triA);
-	     
+	    
+	        ////타겟, 서머리/////
 	        point_doc_tgBi = new double[QnA.docVectorsTgBi[validDocs[i]].length + QnA.queryVectorTgBi.length];
         	point_query_tgBi = new double[QnA.docVectorsTgBi[validDocs[i]].length + QnA.queryVectorTgBi.length];
           
@@ -421,12 +446,12 @@ public class SimCalculator {
                		QnA.vectorCountsSmBi,QnA.queryVecCount_bigram,tfVectors_smry);
             } 
         	
-        	
+        	////////////////
         	
         	catPoint[validDocs[i]] = catSimilarity(validDocs[i],queryIdx,docCat,queryCat);
         	
         	
-        	
+        	////////////////////tfidf를 자질로 cosine similarity 계산////////////////////
         	cosSim_Q[validDocs[i]] = cosineSimilarity(point_doc_Q, point_query_Q);
             cosSim_A[validDocs[i]] = cosineSimilarity(point_doc_A, point_query_A);
             cosSim_bi_Q[validDocs[i]] = cosineSimilarity(point_doc_bi_Q, point_query_bi_Q);
@@ -441,7 +466,7 @@ public class SimCalculator {
             if(QnA.docVectorsSmBi[validDocs[i]]!=null)
             	summery_bi[validDocs[i]]=cosineSimilarity(point_doc_smry, point_query_smry);
             
-            TotalScore[validDocs[i]] = sumScore(
+            TotalScore[validDocs[i]] = sumScore(//그냥 weighted sum이에요
             				BMscore_A[validDocs[i]],BMscore_Q[validDocs[i]],BMscore_bi_A[validDocs[i]]
             				,BMscore_bi_Q[validDocs[i]],BMscore_tri_A[validDocs[i]],BMscore_tri_Q[validDocs[i]]
             				,cosSim_A[validDocs[i]],cosSim_Q[validDocs[i]],cosSim_bi_A[validDocs[i]],cosSim_bi_Q[validDocs[i]]
@@ -477,7 +502,7 @@ public class SimCalculator {
     	getTop10(TotalScore,idxArrTT);
     */
 
-    	
+    	///각 유사도 계산 방법 별 상위 10개의 문서의 idx를 idxArr에 넣어줍니당///
     	getTop10(cosSim_A,idxArrCM_A);
     	getTop10(cosSim_Q,idxArrCM_Q);
     	getTop10(cosSim_bi_A,idxArrCS_A);
@@ -500,7 +525,7 @@ public class SimCalculator {
     	
     	getTop10(TotalScore,idxArrTT);
     	
-    	
+    	///상위 열개 문서의 idx들을 searchResult에 모아줘요 나중에 xml 쓰는 용///
     	searchResults_BM_A[queryIdx] = idxArrBM_A;
     	searchResults_BM_Q[queryIdx] = idxArrBM_Q;
     	searchResults_BS_A[queryIdx] = idxArrBS_A;
@@ -880,18 +905,21 @@ public class SimCalculator {
     	}
     	
     }
+    ///////getValidsDocs///////
+    //쿼리에 포함된 형태소 또는 음절 ngram을 포함한 문서들의 index들을 validDocs에 추가, 추가한 만큼 validx 키워줌 validx 리턴 안해도 바뀔텐데 굳이 리턴함
+    ///////////////////////////
     private int getValidsDocs(int[] validDocs, int validx, String[] queryV, HashMap<String, Integer[]> tfV) {
 		// TODO Auto-generated method stub
 
 		for(String vec : queryV)
     	{
-    		Integer[] DocIdxs = tfV.get(vec);
+    		Integer[] DocIdxs = tfV.get(vec);//vec(쿼리 내의 형태소 혹은 ngram)을 포함한 문서들의 idx들의 array
     		if(DocIdxs!=null)
 	    		for(int idx : DocIdxs)
 	    		{
 	    			if(ut.array_search(validDocs, idx)== -1) 
 	    			{
-	    				validDocs[validx++] = idx;
+	    				validDocs[validx++] = idx;//validDocs에 해당 idx 들의 array를 넣어줘요, 넣은 만큼 validx 키움
 	    				
 	    			}
 	    		}
@@ -931,10 +959,7 @@ public class SimCalculator {
 	   private void getPoint(int i/*name of valid document*/,double[] point_doc, double[] point_query, String[][] docVectors2,
 				String[] queryVector2, int[][] vectorCounts2, int[] queryVecCount2, HashMap<String, ArrayList<Integer>> tfidfVectors2) {
 			// TODO Auto-generated method stub
-	     	HashSet<String> totalVector = new HashSet<String>();
-	    	//여기 짜야됨!!
-
-	    	
+	     	HashSet<String> totalVector = new HashSet<String>();	    	
 	    	for(int j=0;j<docVectors2[i].length;j++)
 	    	{
 	    		if(docVectors2[i][j] == null) break;
@@ -974,31 +999,36 @@ public class SimCalculator {
 	    		}
 	    		
 	    		
-	    	
-	    		
+
 	    		point_doc[j] *=idf/*idf*/;
 	    		point_query[j] *=idf/*idf*/;
-	    		
-	    		
+
+
 	    		j++;
 	    	}
 	    
 	    	return;
 		}
+	   //////getPoint//////
+	   //한문서, 쿼리 간 BM25 점수 계산하고, 0-1사이의 값으로 변환
+	   //0-1사이 값으로 만들으려고 시그모이드 함수를 썼는데 이제와서 생각해 보니 이래서 bm25 성능이 안좋았던 것 같아요... 다른 방법을 사용해서 정규화 해보는게 어떨까요
+	   //raw count를 term frequency로 썻네요... count로 한다고 안되는 건 아닐 것 같은데, 문장길이로 정규화 하는게 더 좋을 것 같아요ㅠㅠ 어떻게 상탄거지
+	   //point_doc, point_query에 각 형태소(또는 음절 ngram)의 tf-idf값들이 들어가요.
+	   ////////////////////
 	private double getPoint(int i/*name of valid document*/,double AVGDL, double[] point_doc, double[] point_query, String[][] docVectors2,
 			String[] queryVector2, int[][] vectorCounts2, int[] queryVecCount2, HashMap<String, Integer[]> tfidfVectors2) throws Exception {
 		// TODO Auto-generated method stub
     	double BMscore = 0.0;
-    	double K = 1.6;
-    	double B = 0.75;
+    	double K = 1.6; //하이퍼 파라미터
+    	double B = 0.75; //하이퍼 파라미터
     	
-    	double a = 0.06;
-    	double b = 0.6;
+    	double a = 0.06; //하이퍼 파라미터
+    	double b = 0.6;  //하이퍼 파라미터
     	double BMsigmoid;
     	
     
     	HashSet<String> totalVector = new HashSet<String>();
-    	//여기 짜야됨!!
+    	
     	
     	int docLen = 0;
     	for(int j=0;j<docVectors2[i].length;j++)
@@ -1019,21 +1049,21 @@ public class SimCalculator {
     		
     		int idx = ut.array_search(docVectors2[i], vec);
     		
-    		if(idx!=-1) point_doc[j] = (double)vectorCounts2[i][idx];
+    		if(idx!=-1) point_doc[j] = (double)vectorCounts2[i][idx];//???
     		else point_doc[j] = 0.0;
     		
     		idx = ut.array_search(queryVector2, vec);
-    		if(idx != -1) point_query[j]= (double)queryVecCount2[idx];
+    		if(idx != -1) point_query[j]= (double)queryVecCount2[idx];//????
     		else  point_query[j] = 0.0;
     		
     		double idf, BMidf;
     	
     		if(tfidfVectors2.get(vec)!=null)
     		{
-    			double N = docVectors2.length, /* 요요 이거 근사값임 ㅡㅡ vector count 를 다 더해야 하는거 아닌가?*/
+    			double N = docVectors2.length, 
     					n = (double)(tfidfVectors2.get(vec).length);
     			idf = Math.log(N/n);
-    			BMidf = Math.log((N-n+0.5)/(n+0.5));//dfdfdfdf
+    			BMidf = Math.log((N-n+0.5)/(n+0.5));
     		}
     		else
     		{
@@ -1045,8 +1075,8 @@ public class SimCalculator {
     		if(ut.array_search(queryVector2, vec)!=-1)
     			BMscore += BMidf/*idf*/*point_doc[j]*(1+K)/(point_doc[j]+K*(1-B+B*docLen/AVGDL));
     		
-    		point_doc[j] *=idf/*idf*/;
-    		point_query[j] *=idf/*idf*/;
+    		point_doc[j] *=idf;
+    		point_query[j] *=idf;
     		
     		
     		j++;

@@ -17,10 +17,14 @@ import kacteil.kma.MorphemeAnalysis;
 public class DocumentParser {
 	boolean DEBUG = false;
 	boolean QUERYCHANGE = true;
-
+	
+	//객체지향적으로 Q/A쌍 문서 각각 분석한것들 묶어놨어야 했는데 자바를 C처럼 써버렸네용
+	//그래서 index 깨지면 안돼요 ㅠㅠㅠㅠ 중간중간 null이 들어가 있기도 한데 그것도 idx 맞추려고 그렇게 했던 거에요... 
+	//네이*에서 긁어온 summary들이랑 국립국어웬에서 제공한 문서들이랑 idx 맞춰야됐어서 null이 중간중간있어요
+	
 	int FILEIDXSIZE = 5537; //last file name + 1
-	int actFILESIZE = 0;
-	boolean isWhiteQuery;
+	int actFILESIZE = 0; //실제 문서 갯수, null인 문서 빼구
+	boolean isWhiteQuery;//쿼리가 빈 문장 들어왔을 때 용 예외처리
 	StringPurifier strPuri;
 
 	double mAVGDL_Q = 0.0;//Average document length (morpheme)
@@ -30,14 +34,14 @@ public class DocumentParser {
 	double bAVGDL_A = 0.0;//Average document length (syllable) // bigarm
 	double tAVGDL_A = 0.0;//Average document length (trigram)
 	
-	TargetSelector TS;
+	TargetSelector TS;//CRF 타겟 셀렉터, 과제에선 쓰이지 않는다고 들었어요
 	
-	MorphemeAnalysis morpheme;
+	MorphemeAnalysis morpheme;//형태소분석기
 	Utils ut;
 	String filepathQ, filepathA;
 	
 	String query = null;
-	String[] queryTg = null;
+	String[] queryTg = null;//쿼리의 '타겟'
 	
 	String[] queryTg_L = null;
 	
@@ -45,17 +49,23 @@ public class DocumentParser {
 	
 	summary_query SQ;
 	
+	/////Q/A쌍을 나눠서 Q따로 유사도 계산하고 A따로 유사도 계산하고 나중에 총점 구할때 weighted sum 해요
+	//vector : 벡터아님(환장) 해당 문서에서 나온 형태소(혹은 음절 ngram)를 string으로 중복없이 가지고 있는 array
+	//count : vector[idx] 가 해당 문서에서 몇번 등장했는지 count[idx]에 저장 (term frequency 계산하려면 필요)
+	
+	/////형태소(형태소 unigram)
 	String[] documentsQ = null;
 	String[] documentsA = null;
     String[][] docVectorsQ = null;
     String[][] docVectorsA = null;
     int[][] vectorCountsQ = null;
     int[][] vectorCountsA = null;
+    
     String[] queryVector = null;
     int[] queryVecCount = null;
     HashMap<String, Integer[]> tfVectorsQ;
     HashMap<String, Integer[]> tfVectorsA;
-    
+    /////음절 bigram
     String[][] docVectors_bigramQ = null;
     int[][] vectorCounts_bigramQ= null;
     String[] queryVector_bigram = null;
@@ -65,7 +75,7 @@ public class DocumentParser {
     String[][] docVectors_bigramA = null;
     int[][] vectorCounts_bigramA = null;
     HashMap<String, Integer[]> tfVectors_biA;
-    
+    /////음절 trigram
     String[] queryVector_trigram = null;
     int[] queryVecCount_trigram = null;
     HashMap<String, Integer[]> tfVectors_tri;
@@ -76,6 +86,7 @@ public class DocumentParser {
     int[][] vectorCounts_trigramA = null;
     HashMap<String, Integer[]> tfVectors_triA;
     
+    /////타겟///////////////////////////////////////
     String[][] docVectorsTgBi = null;
     int[][] vectorCountsTgBi = null;
     String[] queryVectorTgBi = null;
@@ -117,13 +128,17 @@ public class DocumentParser {
     String[] queryVectorTgWord_A = null;
     int[] queryVecCountTgWord_A = null;
     HashMap<String, ArrayList<Integer>> tfVectors_tgWord_A;
+    //////////////여기까지 다 타겟때문에 들어간 부분, 과제에선 안쓴다구 들었습니다용. 타겟을 어떻게 써먹어야 할지 고민 많이 했어서 여러가지 방식이 잔뜩 들어가 있네요(대환장)
     
+    ///서머리 관련//////
     String[][] docVectorsSmBi = null;
     int[][] vectorCountsSmBi = null;
     HashMap<String, ArrayList<Integer>> tfVectors_smBi;
-
-   //10개씩 20개
-   
+    /////서머리 끝///
+    
+   ///Document Parser///
+   //그냥 Q, A, summary(사람손으로 QA문서 요약한거) 읽어서 형태소분석, 음절 bigram, 음절 trigram
+   /////////////////////
     public DocumentParser(String filePath) throws FileNotFoundException, IOException, Exception {
 		ut = new Utils();
 		
@@ -132,9 +147,9 @@ public class DocumentParser {
     	filepathQ = filePath + "\\Questions.txt";
     	filepathA = filePath + "\\Answers.txt";
     	
-    	SQ = new summary_query(".\\summary\\summary.txt");
+    	SQ = new summary_query(".\\summary\\summary.txt");//사람이 직접 만든 Q/A쌍에 대한 summary. (만에하나 이런 수작업을 하자고 하면 격렬하게 반대하세요.)
     	
-    	morpheme = new MorphemeAnalysis(true, false, true);
+    	morpheme = new MorphemeAnalysis(true, false, true);//강원대 칵테일 형태소 분석기
         
        
         morpheme.loadFile("./data/");
@@ -166,9 +181,9 @@ public class DocumentParser {
    
         
        mAVGDL_Q = mAVGDL_A = 0.0;//average document length (morpheme)
-       bAVGDL_Q = bAVGDL_A = 0.0;//average document length (syllable)
-       tAVGDL_Q = tAVGDL_A = 0.0;//average document length (trigram)  = (sSUM-1)/total
-        
+       bAVGDL_Q = bAVGDL_A = 0.0;//average document length (syllable_bigram)
+       tAVGDL_Q = tAVGDL_A = 0.0;//average document length (syllable_trigram)  = (sSUM-1)/total
+      /////타겟, 서머리////  
       docVectorsTgBi=new String[FILEIDXSIZE][];
       vectorCountsTgBi = new int[FILEIDXSIZE][];
       
@@ -193,13 +208,13 @@ public class DocumentParser {
       vectorCountsTgWord_A = getObj_count("./crf/syll_A_word.counts");
       
       mergetObj(docVectorsTgWord_Q,vectorCountsTgWord_Q, docVectorsTgWord_A,vectorCountsTgWord_A, docVectorsTgWord,vectorCountsTgWord/*이건 쓰지마*/);
-
       
       String[] summery = new String[FILEIDXSIZE];
       readSummery(".\\summary\\summary.txt", summery);
   	 
       summary_trimed = new String[FILEIDXSIZE][];
       readSummeryTrimed(".\\summary\\summaryTab.txt",summary_trimed);
+      ////////////////
       
       TS = new TargetSelector();
         
@@ -211,7 +226,7 @@ public class DocumentParser {
         	if(documentsQ[fileidx] == null) continue;
 
         	
-        	analyzedstr = morpheme.Start(strPuri.getPurifiedBfMorph(documentsQ[fileidx]));
+        	analyzedstr = morpheme.Start(strPuri.getPurifiedBfMorph(documentsQ[fileidx]));//형태소분석함
 
         	
         		docVectorsQ[fileidx] = new String[analyzedstr.length()];
@@ -221,12 +236,10 @@ public class DocumentParser {
 		        docVectors_trigramQ[fileidx] = new String[documentsQ[fileidx].length()];
 		        vectorCounts_trigramQ[fileidx] = new int[documentsQ[fileidx].length()];
 		        
-	            
+	            ////문서를 형태소/음절bigram/음절trigram 단위로 자르고, vectord와 count를 만듦, 각 단위별 문서의 길이를 AVGDL에 다 더함(나중에 문서갯수로 나눠서 평균냄)
 	            mAVGDL_Q += tokenize_string (analyzedstr.replaceAll(" ", "+"), docVectorsQ[fileidx], vectorCountsQ[fileidx]);
 	            bAVGDL_Q += tokenize_string_syllable("$",documentsQ[fileidx], docVectors_bigramQ[fileidx], vectorCounts_bigramQ[fileidx],2);
 	            tAVGDL_Q += tokenize_string_syllable("$",documentsQ[fileidx], docVectors_trigramQ[fileidx], vectorCounts_trigramQ[fileidx],3);// 요요 넌 안나누니?
-                //띄어쓰기 없애 볼까?
-
 	        	
 	            analyzedstr = morpheme.Start(strPuri.getPurifiedBfMorph(documentsA[fileidx]));
 	        
@@ -236,27 +249,31 @@ public class DocumentParser {
 		        vectorCounts_bigramA[fileidx] = new int[documentsA[fileidx].length()+1];
 		        docVectors_trigramA[fileidx] = new String[documentsA[fileidx].length()];
 		        vectorCounts_trigramA[fileidx] = new int[documentsA[fileidx].length()];
-	            
+		        
+		        ////문서를 형태소/음절bigram/음절trigram 단위로 자르고, vectord와 count를 만듦, 각 단위별 문서의 길이를 AVGDL에 다 더함(나중에 문서갯수로 나눠서 평균냄)
 	            mAVGDL_A += tokenize_string (analyzedstr.replaceAll(" ", "+"), docVectorsA[fileidx], vectorCountsA[fileidx]);
 	            bAVGDL_A += tokenize_string_syllable("$",documentsA[fileidx], docVectors_bigramA[fileidx], vectorCounts_bigramA[fileidx],2);
 	            tAVGDL_A += tokenize_string_syllable("$",documentsA[fileidx], docVectors_trigramA[fileidx], vectorCounts_trigramA[fileidx],3);// 요요 넌 안나누니?
                
+	            ///서머리
 	            if(summery[fileidx]!=null)
 	            {
 	            	docVectorsSmBi[fileidx] = new String[summery[fileidx].length()];
 	            	vectorCountsSmBi[fileidx] = new int[summery[fileidx].length()];
 	            	tokenize_string_syllable(" ",summery[fileidx], docVectorsSmBi[fileidx], vectorCountsSmBi[fileidx],2);
 	            }
+	            ///////
 	            
              
         }
-        mAVGDL_Q /= (double)actFILESIZE;
+        mAVGDL_Q /= (double)actFILESIZE;//그냥 filesize 아니고  actFILESIZE, null이 아닌 실제 문서 갯수
         bAVGDL_Q /= (double)actFILESIZE;
         mAVGDL_A /= (double)actFILESIZE;
         bAVGDL_A /= (double)actFILESIZE;
-
+        
+        //타겟때메 들어간 부분
         wordToUni(docVectorsTgWord, docVectorsTgUni, vectorCountsTgUni);
-   	
+        ////
     }
     
 
@@ -524,7 +541,12 @@ public class DocumentParser {
     	}
 		return tokenLen;
 	}
-
+	//////tokenize_string//////
+	//입력 string을 "+"로 토크나이즈 해줍니다
+	//vector 라고 돼있긴 한데 진짜 실수로된 벡터는 아니에요 ㅠㅠ 왜 이렇게 이름을 지었을까요...
+	//vector는 해당 문서에 등장한 형태소들을 중복없이 가지고 있는 array에요
+	//count[idx]는 vector[idx] 형태소가 해당 문서에 몇번 등장했는지 count를 센 거에요 term frequency 때문에 만든 거에요
+	///////////////////////////
 	private double tokenize_string (String target, String[] vector, int[] count) {
 
 		StringTokenizer token = null;
@@ -557,9 +579,9 @@ public class DocumentParser {
 		{	
 			isWhiteQuery = false;
 			query = strPuri.getPurifiedString(Query);
-			String analyzedstr = morpheme.Start(strPuri.getPurifiedBfMorph(query));
+			String analyzedstr = morpheme.Start(strPuri.getPurifiedBfMorph(query));//쿼리 형태소 분석함
 			
-	        queryVector = new String[analyzedstr.length()];
+	        queryVector = new String[analyzedstr.length()];//bi, tri... 이런거 없이 걍 있으면 보통 형태소에요
 	        queryVector_bigram = new String[query.length()+1];
 	        queryVector_trigram = new String[query.length()];
 
