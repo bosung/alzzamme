@@ -14,7 +14,7 @@ public class SimCalculator {
 	summary_query SQ;
 	FileOutputStream fosidf;
 	
-	int FILEIDXSIZE = 5537; //last file name + 1
+	int FILEIDXSIZE = 5537; //last file name + 1 매직넘버 노답;
 
 	DocumentParser QnA;
 	Utils ut;
@@ -46,7 +46,7 @@ public class SimCalculator {
     
     int[][] Answers = {{5126},{3325,3330},{728,726},{1001,1196,2025},{3422},{2128,2129,2130},
     		{407},{4587,4588},{3911},{3891},{4564},{3885},{3950,1570,71}
-    		,{5029},{1910,1911,1883,1884,1885},{4304,4305},{836,3952},{4688},{4127},{2838, 4743, 5051, 2802}};
+    		,{5029},{1910,1911,1883,1884,1885},{4304,4305},{836,3952},{4688},{4127},{2838, 4743, 5051, 2802}};//golden 정답 이에요 각 query에 이 번호의 문서들이 나와줘야 해요!
     	/*{
     		{	1555,	1554,	4531}
     		,{3216,	3217	}
@@ -212,7 +212,9 @@ public class SimCalculator {
 	}
 
 	
-
+	/////getTf/////
+	//현재 document에 등장한 형태소/음절ngram 가지고[ key:형태소 또는 음절ngrm value:해당 형태소 또는 음절ngram이 출현한 문서 번호 array ] 이런 hash를 만들어요
+	//////////////
 	private void getTf(HashMap<String, Integer[]> tfV, String[][] docV)
     {
     	
